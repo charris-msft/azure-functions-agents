@@ -2,6 +2,7 @@ import importlib.util
 import inspect
 import logging
 import os
+import sys
 from typing import Callable, List
 
 from copilot import define_tool
@@ -14,6 +15,12 @@ def discover_tools() -> List[Callable]:
     tools: List[Callable] = []
     project_src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     tools_dir = os.path.join(project_src_dir, "tools")
+
+    # Add tools dir to sys.path so tool modules can import shared helpers
+    # (e.g. _patterns.py, _utils.py — files prefixed with _ that are skipped
+    # during tool registration but may be imported by tool modules)
+    if tools_dir not in sys.path:
+        sys.path.insert(0, tools_dir)
 
     print(f"[Tool Discovery] Looking for tools in: {tools_dir}")
     print(f"[Tool Discovery] Directory exists: {os.path.exists(tools_dir)}")
