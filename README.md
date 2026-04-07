@@ -53,6 +53,7 @@ src/                           # Self-contained Azure Functions app
     ├── connectors.py          # ARM connector Swagger parsing
     ├── connector_tool_cache.py
     ├── client_manager.py      # CopilotClient singleton
+    ├── sandbox.py             # ACA dynamic sessions (execute_python tool)
     ├── arm.py                 # ARM API client
     ├── config.py              # Session state config
     ├── mcp.py                 # MCP server config loading
@@ -108,6 +109,12 @@ You can also configure optional environment variables for Teams connector integr
 azd env set TEAMS_CONNECTION_ID "/subscriptions/.../providers/Microsoft.Web/connections/teams"
 azd env set TEAMS_TEAM_ID "<team-guid>"
 azd env set TEAMS_CHANNEL_ID "<channel-id>"
+```
+
+For the execution sandbox (code interpreter), configure:
+
+```bash
+azd env set ACA_SESSION_POOL_ENDPOINT "https://<region>.dynamicsessions.io/subscriptions/<sub-id>/resourceGroups/<rg>/sessionPools/<pool-name>"
 ```
 
 #### Model Selection
@@ -218,6 +225,32 @@ For example, a Teams connector generates ~30 tools including `teams_post_message
 **Prerequisites:** Same RBAC and identity requirements as connector triggers (see above).
 
 Connector tools are cached for the lifetime of the function app instance. If a connection fails to load, it logs a warning and continues with remaining connections.
+
+## Execution Sandbox (Code Interpreter)
+
+You can give your agent the ability to execute Python code in a sandboxed environment by adding an `execution_sandbox` section to your `AGENTS.md` frontmatter:
+
+```yaml
+---
+execution_sandbox:
+  session_pool_management_endpoint: $ACA_SESSION_POOL_ENDPOINT
+---
+```
+
+When configured, the runtime registers an `execute_python` tool that executes code in [Azure Container Apps dynamic sessions](https://learn.microsoft.com/azure/container-apps/sessions). The sandbox provides:
+
+- A persistent Jupyter kernel with common packages (numpy, pandas, matplotlib, scikit-learn, etc.)
+- Playwright browser automation (a `launch_browser()` helper is pre-loaded)
+- File storage at `/mnt/data/`
+- 60-second execution timeout per call
+
+Each tool invocation runs in a fresh session — state does not persist across calls.
+
+**Prerequisites:**
+
+1. An ACA session pool (code interpreter type) — create one in the Azure Portal or via CLI
+2. The function app's managed identity must have the `Azure ContainerApps Session Executor` role on the session pool
+3. Set the `ACA_SESSION_POOL_ENDPOINT` environment variable to the pool management endpoint URL
 
 ## Building Custom Tools with Python
 

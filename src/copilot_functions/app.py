@@ -16,6 +16,7 @@ import frontmatter
 
 from .connector_tool_cache import _resolve_env_var, configure_connector_tools
 from .runner import run_copilot_agent, run_copilot_agent_stream
+from .sandbox import configure_sandbox
 from azurefunctions.extensions.http.fastapi import Request, Response, StreamingResponse
 
 # Resolve the application root (parent of this package directory, i.e. ``src/``)
@@ -405,6 +406,11 @@ def create_function_app() -> func.FunctionApp:
     tools_from_connections = metadata.get("tools_from_connections")
     if isinstance(tools_from_connections, list):
         configure_connector_tools(tools_from_connections)
+
+    # ---- Configure execution sandbox from frontmatter ----
+    execution_sandbox = metadata.get("execution_sandbox")
+    if isinstance(execution_sandbox, dict):
+        configure_sandbox(execution_sandbox)
 
     # ---- HTTP routes ----
 

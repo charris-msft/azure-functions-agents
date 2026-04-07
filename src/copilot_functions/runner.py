@@ -12,6 +12,7 @@ from .client_manager import CopilotClientManager, _is_byok_mode
 from .config import resolve_config_dir, session_exists
 from .connector_tool_cache import get_connector_tools
 from .mcp import get_cached_mcp_servers
+from .sandbox import get_sandbox_tools
 from .skills import resolve_session_directory_for_skills
 from .tools import _REGISTERED_TOOLS_CACHE
 
@@ -190,17 +191,19 @@ async def run_copilot_agent(
 
     # Discover connector tools (lazy-init, cached after first call)
     connector_tools = await get_connector_tools()
+    sandbox_tools = await get_sandbox_tools()
+    extra_tools = connector_tools + sandbox_tools
 
     # Resume existing session or create a new one
     if session_id and session_exists(config_dir, session_id):
         logging.info(f"Resuming existing session: {session_id}")
-        resume_kwargs = _build_resume_kwargs(model=model, config_dir=config_dir, extra_tools=connector_tools)
+        resume_kwargs = _build_resume_kwargs(model=model, config_dir=config_dir, extra_tools=extra_tools)
         session = await client.resume_session(session_id, **resume_kwargs)
     else:
         if session_id:
             logging.info(f"Creating new session with provided ID: {session_id}")
         session_kwargs = _build_session_kwargs(
-            model=model, config_dir=config_dir, session_id=session_id, streaming=streaming, extra_tools=connector_tools
+            model=model, config_dir=config_dir, session_id=session_id, streaming=streaming, extra_tools=extra_tools
         )
         session = await client.create_session(**session_kwargs)
 
@@ -339,16 +342,18 @@ async def run_copilot_agent_stream(
             queue.put_nowait({"type": "error", "content": error_msg})
 
     connector_tools = await get_connector_tools()
+    sandbox_tools = await get_sandbox_tools()
+    extra_tools = connector_tools + sandbox_tools
 
     if session_id and session_exists(config_dir, session_id):
         logging.info(f"[stream] Resuming existing session: {session_id}")
-        resume_kwargs = _build_resume_kwargs(model=model, config_dir=config_dir, streaming=True, extra_tools=connector_tools)
+        resume_kwargs = _build_resume_kwargs(model=model, config_dir=config_dir, streaming=True, extra_tools=extra_tools)
         session = await client.resume_session(session_id, **resume_kwargs, on_event=on_event)
     else:
         if session_id:
             logging.info(f"[stream] Creating new session with provided ID: {session_id}")
         session_kwargs = _build_session_kwargs(
-            model=model, config_dir=config_dir, session_id=session_id, streaming=True, extra_tools=connector_tools
+            model=model, config_dir=config_dir, session_id=session_id, streaming=True, extra_tools=extra_tools
         )
         session = await client.create_session(**session_kwargs, on_event=on_event)
 

@@ -75,6 +75,9 @@ param teamsTeamId string = ''
 @description('Microsoft Teams channel ID for the channel message trigger.')
 param teamsChannelId string = ''
 
+@description('Pool management endpoint URL for ACA dynamic sessions (execution sandbox).')
+param acaSessionPoolEndpoint string = ''
+
 @description('Model to use. GitHub models run via the Copilot SDK (no extra infra). Foundry models deploy a Microsoft Foundry account + model.')
 @allowed([
   // GitHub Copilot models (no additional infrastructure needed)
@@ -196,6 +199,9 @@ module api './app/api.bicep' = {
       } : {},
       !empty(teamsChannelId) ? {
         TEAMS_CHANNEL_ID: teamsChannelId
+      } : {},
+      !empty(acaSessionPoolEndpoint) ? {
+        ACA_SESSION_POOL_ENDPOINT: acaSessionPoolEndpoint
       } : {}
     )
     virtualNetworkSubnetId: vnetEnabled ? serviceVirtualNetwork!.outputs.appSubnetID : ''

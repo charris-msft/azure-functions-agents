@@ -28,6 +28,9 @@
     },
     "teamsChannelId": {
       "value": "${TEAMS_CHANNEL_ID}"
+    },
+    "acaSessionPoolEndpoint": {
+      "value": "${ACA_SESSION_POOL_ENDPOINT}"
     }
   }
 }

@@ -12,6 +12,8 @@ functions:
     logger: true
 tools_from_connections:
   - connection_id: $TEAMS_CONNECTION_ID
+execution_sandbox:
+  session_pool_management_endpoint: $ACA_SESSION_POOL_ENDPOINT
 ---
 
 You're an agent that is called when there's a new message in a Teams channel. Reply to the message to the best of your abilities.
