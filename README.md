@@ -10,7 +10,13 @@ Define your agent's behavior in a `.agent.md` file, add skills as knowledge modu
 
 ### From a GitHub release (`.whl`)
 
-Download the `.whl` from the [Releases](../../releases) page, then:
+Install directly from the release URL:
+
+```bash
+pip install https://github.com/anthonychu/copilot-functions/releases/download/v0.1.0/copilot_functions-0.1.0-py3-none-any.whl
+```
+
+Or download the `.whl` from the [Releases](https://github.com/anthonychu/copilot-functions/releases) page and install locally:
 
 ```bash
 pip install copilot_functions-0.1.0-py3-none-any.whl
@@ -29,6 +35,9 @@ Connector tools (Teams, Office 365, SQL, Salesforce, etc.) require an optional e
 ```bash
 # From .whl
 pip install "copilot_functions-0.1.0-py3-none-any.whl[connectors]"
+
+# From release URL
+pip install "copilot-functions[connectors] @ https://github.com/anthonychu/copilot-functions/releases/download/v0.1.0/copilot_functions-0.1.0-py3-none-any.whl"
 
 # From repo
 pip install "copilot-functions[connectors] @ git+https://github.com/anthonychu/copilot-functions.git"
@@ -76,10 +85,10 @@ app = create_function_app()
 ### 4. Create `requirements.txt`
 
 ```
-copilot_functions-0.1.0-py3-none-any.whl
+https://github.com/anthonychu/copilot-functions/releases/download/v0.1.0/copilot_functions-0.1.0-py3-none-any.whl
 ```
 
-Or reference the GitHub release URL directly.
+Or use any other install method from the [Installation](#installation) section.
 
 ### 5. Start Azurite (local storage emulator)
 
