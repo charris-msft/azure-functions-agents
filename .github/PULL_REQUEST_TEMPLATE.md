@@ -26,10 +26,10 @@ What kind of change does this Pull Request introduce?
 *  Get the code
 
 ```
-git clone https://github.com/Azure-Samples/functions-markdown-agent.git
-cd functions-markdown-agent
+git clone https://github.com/anthonychu/copilot-functions.git
+cd copilot-functions
 git checkout [branch-name]
-python -m pip install -r src/requirements.txt
+pip install -e ".[connectors]"
 ```
 
 * Test the code

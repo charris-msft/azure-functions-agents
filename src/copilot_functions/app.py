@@ -19,14 +19,11 @@ from typing import Any, Dict, List, Optional
 import azure.functions as func
 import frontmatter
 
-from .config import get_app_root, resolve_env_var
+from .config import get_app_root, set_app_root, resolve_env_var
 from .connector_tool_cache import configure_connector_tools
 from .runner import run_copilot_agent, run_copilot_agent_stream
 from .sandbox import create_sandbox_tools
 from azurefunctions.extensions.http.fastapi import Request, Response, StreamingResponse
-
-# Resolve the application root (parent of this package directory, i.e. ``src/``)
-_APP_ROOT = get_app_root()
 
 _MCP_AGENT_TOOL_PROPERTIES = json.dumps(
     [
@@ -125,9 +122,9 @@ def _resolve_trigger_params(trigger_params: Dict[str, Any]) -> Dict[str, Any]:
 # Triggered agent registration (*.agent.md files)
 # ---------------------------------------------------------------------------
 
-def _register_triggered_agents(app: func.FunctionApp) -> None:
+def _register_triggered_agents(app: func.FunctionApp, app_root: Path) -> None:
     """Discover and register triggered agents from *.agent.md files."""
-    agent_files = sorted(glob.glob(str(_APP_ROOT / "*.agent.md")))
+    agent_files = sorted(glob.glob(str(app_root / "*.agent.md")))
     if not agent_files:
         logging.info("No agent files found.")
         return
@@ -355,16 +352,28 @@ def _make_agent_handler(
 # App factory
 # ---------------------------------------------------------------------------
 
-def create_function_app() -> func.FunctionApp:
-    """Build and return a fully-configured Azure Functions app."""
+def create_function_app(app_root: Path | None = None) -> func.FunctionApp:
+    """Build and return a fully-configured Azure Functions app.
+
+    Parameters
+    ----------
+    app_root:
+        Root directory of the agent project (contains ``main.agent.md``,
+        ``tools/``, ``skills/``, etc.).  When *None*, falls back to
+        ``COPILOT_APP_ROOT`` env var or the current working directory.
+    """
+    if app_root is not None:
+        set_app_root(app_root)
+
+    resolved_root = get_app_root()
 
     app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
 
     # ---- Load main agent (main.agent.md) ----
-    main_agent = _load_agent_file(_APP_ROOT / "main.agent.md")
+    main_agent = _load_agent_file(resolved_root / "main.agent.md")
 
     # ---- Register triggered agents from *.agent.md ----
-    _register_triggered_agents(app)
+    _register_triggered_agents(app, resolved_root)
 
     # If no main agent, skip HTTP/MCP/UI endpoints
     if not main_agent:

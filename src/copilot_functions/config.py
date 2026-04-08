@@ -9,22 +9,43 @@ from typing import Optional
 # Application root resolution
 # ---------------------------------------------------------------------------
 
+_app_root: Optional[Path] = None
+
+
+def set_app_root(path: Path) -> None:
+    """Explicitly set the application root directory.
+
+    Call this early (e.g. before ``create_function_app()``) so that all
+    agent, tool, skill, and MCP discovery uses the correct base path.
+    """
+    global _app_root
+    _app_root = Path(path).resolve()
+
+
 def get_app_root() -> Path:
     """Return the root directory of the user's agent project.
 
     This is the directory containing ``main.agent.md``, ``tools/``,
-    ``.vscode/mcp.json``, skills directories, etc.  By default it is
-    the parent of the ``copilot_functions`` package directory (i.e. the
-    Azure Functions ``src/`` folder).
+    ``.vscode/mcp.json``, skills directories, etc.
 
-    Override with the ``COPILOT_APP_ROOT`` environment variable when
-    ``copilot_functions`` is installed as a standalone package and the
-    project root is elsewhere.
+    Resolution order:
+
+    1. Value set via ``set_app_root()``
+    2. ``COPILOT_APP_ROOT`` environment variable
+    3. ``AzureWebJobsScriptRoot`` environment variable (set automatically
+       by the Azure Functions host, both locally via ``func start`` and
+       in Azure — points to the directory containing ``host.json``)
+    4. Current working directory (``Path.cwd()``)
     """
+    if _app_root is not None:
+        return _app_root
     explicit = os.environ.get("COPILOT_APP_ROOT")
     if explicit:
         return Path(explicit).resolve()
-    return Path(__file__).resolve().parent.parent
+    script_root = os.environ.get("AzureWebJobsScriptRoot")
+    if script_root:
+        return Path(script_root).resolve()
+    return Path.cwd().resolve()
 
 # Default session state directory used by the Copilot CLI
 _DEFAULT_CONFIG_DIR = os.path.expanduser("~/.copilot")
