@@ -157,6 +157,7 @@ def _build_resume_kwargs(
         "available_tools": available_tool_names,
         "system_message": {"mode": "replace", "content": system_content},
         "on_permission_request": _default_permission_handler,
+
     }
 
     # If Microsoft Foundry BYOK is configured, add provider config
