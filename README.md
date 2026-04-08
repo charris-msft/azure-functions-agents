@@ -125,7 +125,7 @@ Your agent is now running at `http://localhost:7071/` with a built-in chat UI, H
 ## Features
 
 - **Markdown-first** — agent instructions, trigger config, and tool bindings in `.agent.md` files
-- **Multi-function** — each `.agent.md` file becomes an Azure Function. `main.agent.md` creates HTTP/MCP endpoints; other files create event-triggered functions (timer, queue, Teams, blob, etc.)
+- **Multi-function** — each `.agent.md` file becomes an Azure Function that runs the agent when triggered. `main.agent.md` creates HTTP/MCP endpoints; other files create event-triggered functions (timer, queue, Teams, blob, etc.)
 - **HTTP APIs** — `POST /agent/chat` and `POST /agent/chatstream`
 - **MCP server** — `/runtime/webhooks/mcp`
 - **Chat UI** — built-in single-page UI at the app root
@@ -167,7 +167,7 @@ Agent instructions in markdown...
 
 ### Multiple functions from markdown
 
-- **`main.agent.md`** — creates HTTP chat, MCP, and UI endpoints. No trigger.
+- **`main.agent.md`** — creates HTTP chat, MCP, and UI endpoints. No other triggers are supported in this file.
 - **`<name>.agent.md`** — creates an event-triggered Azure Function. Exactly one trigger per file. The filename (minus `.agent.md`) becomes the function name.
 
 ### Trigger type resolution
