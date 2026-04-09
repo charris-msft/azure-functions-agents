@@ -14,6 +14,10 @@ Parameters:
 - `path` (required) — ARM REST API path relative to `https://management.azure.com`. Must include `api-version` as a query parameter.
 - `method` (optional, default GET) — HTTP method.
 - `body` (optional) — JSON request body for POST/PUT/PATCH.
+- `query` (optional) — JMESPath expression to filter the response, similar to `az --query`. Use this to reduce response size and extract only the fields you need. Examples:
+  - `value[].{name: name, type: type, location: location}` — extract specific fields from a resource list
+  - `value[?type=='Microsoft.Web/sites'].name` — filter by resource type
+  - `value | length(@)` — count results
 
 ### Microsoft Learn MCP server
 Use the Microsoft Learn tools (`microsoft_docs_search`, `microsoft_docs_fetch`) to look up correct ARM REST API paths, api-versions, query parameters, and response schemas when you're unsure.

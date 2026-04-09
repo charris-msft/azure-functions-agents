@@ -2,6 +2,10 @@
 
 An HTTP chat agent with a built-in web UI, streaming API, MCP server endpoint, and Python code execution via ACA Dynamic Sessions.
 
+| Trigger | Custom Tools | Connectors | MCP Servers | Skills | Sandbox | Chat UI |
+|---|---|---|---|---|---|---|
+| HTTP | | | | | ✅ | ✅ |
+
 ## Features
 
 - **Chat UI** — built-in single-page interface at the app root

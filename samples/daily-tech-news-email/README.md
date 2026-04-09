@@ -2,6 +2,10 @@
 
 A timer-triggered agent that fetches the day's top tech news headlines, summarizes them, and emails a digest using the Office 365 connector.
 
+| Trigger | Custom Tools | Connectors | MCP Servers | Skills | Sandbox | Chat UI |
+|---|---|---|---|---|---|---|
+| Timer | | ✅ Office 365 | | | ✅ | |
+
 ## Features
 
 - **Timer trigger** — runs daily at 15:00 UTC

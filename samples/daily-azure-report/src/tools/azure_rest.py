@@ -13,6 +13,7 @@ import json
 from typing import Optional
 
 import aiohttp
+import jmespath
 from azure.identity.aio import DefaultAzureCredential
 from pydantic import BaseModel, Field
 
@@ -31,6 +32,10 @@ class AzureRestParams(BaseModel):
     body: Optional[str] = Field(
         default=None,
         description="JSON request body for POST/PUT/PATCH requests.",
+    )
+    query: Optional[str] = Field(
+        default=None,
+        description="JMESPath query to filter the response (like az cli --query). Example: value[].{name: name, type: type, location: location}",
     )
 
 
@@ -67,5 +72,11 @@ async def azure_rest(params: AzureRestParams) -> str:
 
         if resp.status >= 400:
             return json.dumps({"error": f"HTTP {resp.status}", "body": data})
+
+        if params.query:
+            try:
+                data = jmespath.search(params.query, data)
+            except Exception as e:
+                return json.dumps({"error": f"JMESPath query failed: {e}", "raw_keys": list(data.keys()) if isinstance(data, dict) else type(data).__name__})
 
         return json.dumps(data)

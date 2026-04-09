@@ -2,6 +2,10 @@
 
 A timer-triggered agent that lists Azure resources created or changed in the last 24 hours and emails a summary report. Uses a custom tool for querying Azure Resource Manager and the Office 365 connector for sending email.
 
+| Trigger | Custom Tools | Connectors | MCP Servers | Skills | Sandbox | Chat UI |
+|---|---|---|---|---|---|---|
+| Timer + HTTP | ✅ azure_rest | ✅ Office 365 | ✅ MS Learn | ✅ azure-resources | | ✅ |
+
 ## Features
 
 - **Timer trigger** — runs daily at 15:00 UTC
