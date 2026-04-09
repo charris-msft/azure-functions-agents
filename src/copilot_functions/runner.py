@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from copilot.session import ProviderConfig, PermissionHandler
+from copilot import CopilotClient, SubprocessConfig
 import frontmatter
 
 from .client_manager import CopilotClientManager, _is_byok_mode
@@ -92,6 +93,23 @@ _TOOL_RESTRICTION_PREFIX = (
 
 
 _default_permission_handler = PermissionHandler.approve_all
+
+
+async def _create_temp_client() -> CopilotClient:
+    """Create a temporary CopilotClient for session resume on a different instance.
+
+    When the singleton client's CLI process doesn't know about a session
+    created on another instance, a fresh CLI subprocess can read the
+    session state from the shared file mount.
+    """
+    app_root = str(get_app_root())
+    if _is_byok_mode():
+        temp = CopilotClient(SubprocessConfig(cwd=app_root))
+    else:
+        github_token = os.environ.get("GITHUB_TOKEN")
+        temp = CopilotClient(SubprocessConfig(github_token=github_token, cwd=app_root))
+    await temp.start()
+    return temp
 
 
 def _build_session_kwargs(
@@ -211,10 +229,16 @@ async def run_copilot_agent(
     extra_tools = connector_tools + (sandbox_tools or [])
 
     # Resume existing session or create a new one
+    temp_client = None
     if session_id and session_exists(config_dir, session_id):
         logging.info(f"Resuming existing session: {session_id}")
         resume_kwargs = _build_resume_kwargs(model=model, config_dir=config_dir, extra_tools=extra_tools)
-        session = await client.resume_session(session_id, **resume_kwargs)
+        try:
+            session = await client.resume_session(session_id, **resume_kwargs)
+        except Exception as e:
+            logging.warning(f"Failed to resume session on singleton client: {e}. Retrying with temp client.")
+            temp_client = await _create_temp_client()
+            session = await temp_client.resume_session(session_id, **resume_kwargs)
     else:
         if session_id:
             logging.info(f"Creating new session with provided ID: {session_id}")
@@ -258,28 +282,35 @@ async def run_copilot_agent(
 
     session.on(on_event)
 
-    if streaming:
-        logging.info(f"Starting streaming session with ID: {session.session_id}")
-        return AgentResult(
-            session_id=session.session_id,
-            content=response_content[-1] if response_content else "",
-            content_intermediate=response_content[-6:-1] if len(response_content) > 1 else [],
-            tool_calls=tool_calls,
-            reasoning="".join(reasoning_content) if reasoning_content else None,
-            events=events_log,
-        )
+    try:
+        if streaming:
+            logging.info(f"Starting streaming session with ID: {session.session_id}")
+            return AgentResult(
+                session_id=session.session_id,
+                content=response_content[-1] if response_content else "",
+                content_intermediate=response_content[-6:-1] if len(response_content) > 1 else [],
+                tool_calls=tool_calls,
+                reasoning="".join(reasoning_content) if reasoning_content else None,
+                events=events_log,
+            )
 
-    else:
-        await session.send_and_wait(prompt, timeout=timeout)
+        else:
+            await session.send_and_wait(prompt, timeout=timeout)
 
-        return AgentResult(
-            session_id=session.session_id,
-            content=response_content[-1] if response_content else "",
-            content_intermediate=response_content[-6:-1] if len(response_content) > 1 else [],
-            tool_calls=tool_calls,
-            reasoning="".join(reasoning_content) if reasoning_content else None,
-            events=events_log,
-        )
+            return AgentResult(
+                session_id=session.session_id,
+                content=response_content[-1] if response_content else "",
+                content_intermediate=response_content[-6:-1] if len(response_content) > 1 else [],
+                tool_calls=tool_calls,
+                reasoning="".join(reasoning_content) if reasoning_content else None,
+                events=events_log,
+            )
+    finally:
+        if temp_client:
+            try:
+                await temp_client.stop()
+            except Exception:
+                pass
 
 
 _STREAM_SENTINEL = object()
@@ -361,10 +392,16 @@ async def run_copilot_agent_stream(
     connector_tools = await get_connector_tools()
     extra_tools = connector_tools + (sandbox_tools or [])
 
+    temp_client = None
     if session_id and session_exists(config_dir, session_id):
         logging.info(f"[stream] Resuming existing session: {session_id}")
         resume_kwargs = _build_resume_kwargs(model=model, config_dir=config_dir, streaming=True, extra_tools=extra_tools)
-        session = await client.resume_session(session_id, **resume_kwargs, on_event=on_event)
+        try:
+            session = await client.resume_session(session_id, **resume_kwargs, on_event=on_event)
+        except Exception as e:
+            logging.warning(f"[stream] Failed to resume session on singleton client: {e}. Retrying with temp client.")
+            temp_client = await _create_temp_client()
+            session = await temp_client.resume_session(session_id, **resume_kwargs, on_event=on_event)
     else:
         if session_id:
             logging.info(f"[stream] Creating new session with provided ID: {session_id}")
@@ -396,3 +433,9 @@ async def run_copilot_agent_stream(
             yield f"data: {json.dumps(item)}\n\n"
     except asyncio.TimeoutError:
         yield f"data: {json.dumps({'type': 'error', 'content': 'Timeout waiting for response'})}\n\n"
+    finally:
+        if temp_client:
+            try:
+                await temp_client.stop()
+            except Exception:
+                pass

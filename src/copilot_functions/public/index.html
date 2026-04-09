@@ -781,25 +781,20 @@
 			const intermediates = normalized.responseIntermediate;
 			const toolCalls = normalized.toolCalls;
 
-			const intermediatesSection = renderDetailsSection("Intermediate responses");
+			const intermediatesSection = renderDetailsSection("Reasoning");
 			if (intermediates.length === 0) {
 				const empty = document.createElement("div");
 				empty.className = "details-empty";
-				empty.textContent = "No intermediate responses in this message.";
+				empty.textContent = "No reasoning trace in this message.";
 				intermediatesSection.appendChild(empty);
 			} else {
-				intermediates.forEach((text, index) => {
-					const item = document.createElement("div");
-					item.className = "details-item";
-					const itemTitle = document.createElement("div");
-					itemTitle.className = "details-item-title";
-					itemTitle.textContent = `Step ${index + 1}`;
-					const content = document.createElement("div");
-					content.textContent = text;
-					item.appendChild(itemTitle);
-					item.appendChild(content);
-					intermediatesSection.appendChild(item);
-				});
+				const item = document.createElement("div");
+				item.className = "details-item";
+				const content = document.createElement("div");
+				content.style.whiteSpace = "pre-wrap";
+				content.textContent = intermediates.join("");
+				item.appendChild(content);
+				intermediatesSection.appendChild(item);
 			}
 
 			const toolsSection = renderDetailsSection("Tool calls");
@@ -892,7 +887,7 @@
 
 			const title = document.createElement("div");
 			title.className = "bubble-intermediates-title";
-			title.textContent = `Intermediate responses (${items.length})`;
+			title.textContent = "Reasoning";
 			intermediatesEl.appendChild(title);
 
 			const text = document.createElement("div");
