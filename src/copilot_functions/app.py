@@ -222,7 +222,7 @@ def _register_builtin_agent(
             trigger_params["schedule"] = _normalize_timer_schedule(str(trigger_params["schedule"]))
 
     # Create handler
-    handler = _make_agent_handler(function_name, agent_name, trigger_type, should_log, sandbox_tools=sandbox_tools)
+    handler = _make_agent_handler(function_name, agent_name, trigger_type, should_log, sandbox_tools=sandbox_tools, agent_instructions=prompt)
 
     # Register with auto-generated arg_name
     trigger_params["arg_name"] = "trigger_data"
@@ -272,7 +272,7 @@ def _register_connector_agent(
         logging.warning(f"Skipping '{function_name}': could not resolve connector trigger '{trigger_type}'")
         return connectors_instance
 
-    handler = _make_agent_handler(function_name, agent_name, trigger_type, should_log, sandbox_tools=sandbox_tools)
+    handler = _make_agent_handler(function_name, agent_name, trigger_type, should_log, sandbox_tools=sandbox_tools, agent_instructions=prompt)
 
     try:
         decorator_fn(**trigger_params)(handler)
@@ -309,6 +309,7 @@ def _make_agent_handler(
     trigger_type: str,
     should_log: bool,
     sandbox_tools: Optional[list] = None,
+    agent_instructions: Optional[str] = None,
 ):
     """Create an async handler function for a triggered agent."""
     async def _handler(trigger_data):
@@ -316,7 +317,11 @@ def _make_agent_handler(
 
         try:
             data_json = _serialize_trigger_data(trigger_data)
-            prompt = f"Triggered by: {trigger_type}\n\nTrigger data:\n```json\n{data_json}\n```"
+            parts = []
+            if agent_instructions:
+                parts.append(agent_instructions)
+            parts.append(f"Triggered by: {trigger_type}\n\nTrigger data:\n```json\n{data_json}\n```")
+            prompt = "\n\n".join(parts)
 
             result = await run_copilot_agent(prompt, sandbox_tools=sandbox_tools)
 
