@@ -34,6 +34,17 @@ pip install "copilot-functions[connectors] @ https://github.com/anthonychu/copil
 pip install "copilot-functions[connectors] @ git+https://github.com/anthonychu/copilot-functions.git"
 ```
 
+## GitHub Token
+
+The Copilot SDK requires a GitHub Personal Access Token (PAT) to authenticate with the GitHub Copilot API.
+
+1. Go to [github.com/settings/tokens](https://github.com/settings/tokens?type=beta) and click **Generate new token** (fine-grained)
+2. Give the token a name (e.g. `copilot-functions`)
+3. Under **Permissions**, select **Add permissions**, then select **Copilot requests**, and set it to **Read-only**
+4. Click **Generate token** and copy the value
+
+Set it as the `GITHUB_TOKEN` environment variable (or pass it via `local.settings.json` / `azd env set` when deploying).
+
 ## Quick Start
 
 ### 1. Create the agent file
@@ -295,7 +306,7 @@ pip install -e ".[connectors]"
 # Build a wheel
 pip install build
 python -m build --wheel
-# Output: dist/copilot_functions-0.3.0-py3-none-any.whl
+# Output: dist/copilot_functions-0.3.1-py3-none-any.whl
 ```
 
 ## Contributing

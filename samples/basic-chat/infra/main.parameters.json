@@ -13,9 +13,6 @@
     },
     "copilotModel": {
       "value": "${COPILOT_MODEL}"
-    },
-    "principalId": {
-      "value": "${AZURE_PRINCIPAL_ID}"
     }
   }
 }
