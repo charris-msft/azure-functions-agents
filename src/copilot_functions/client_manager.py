@@ -5,7 +5,7 @@ from typing import Optional
 
 from copilot import CopilotClient, SubprocessConfig
 
-from .config import get_app_root
+from .config import get_app_root, resolve_config_dir
 
 
 def _is_byok_mode() -> bool:
@@ -37,17 +37,29 @@ class CopilotClientManager:
         manager = cls()
         async with manager._lock:
             if manager._client is None or not manager._started:
+                app_root = str(get_app_root())
+                config_dir = resolve_config_dir()
+
+                # Pass --config-dir as a CLI startup flag so the subprocess
+                # writes events.jsonl and can load sessions from the shared
+                # mount, enabling cross-instance session resume.
+                cli_args: list[str] = []
+                if config_dir:
+                    cli_args = ["--config-dir", config_dir]
+                    logging.info(f"CLI config-dir: {config_dir}")
+
                 if _is_byok_mode():
                     logging.info("BYOK mode: using Microsoft Foundry (no GitHub token)")
                     manager._client = CopilotClient(
-                        SubprocessConfig(cwd=str(get_app_root()))
+                        SubprocessConfig(cwd=app_root, cli_args=cli_args)
                     )
                 else:
                     github_token = os.environ.get("GITHUB_TOKEN")
                     manager._client = CopilotClient(
                         SubprocessConfig(
                             github_token=github_token,
-                            cwd=str(get_app_root()),
+                            cwd=app_root,
+                            cli_args=cli_args,
                         )
                     )
 

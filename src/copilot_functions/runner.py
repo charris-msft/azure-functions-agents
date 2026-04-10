@@ -96,7 +96,6 @@ _default_permission_handler = PermissionHandler.approve_all
 
 def _build_session_kwargs(
     model: str = DEFAULT_MODEL,
-    config_dir: Optional[str] = None,
     session_id: Optional[str] = None,
     streaming: bool = False,
     extra_tools: Optional[list] = None,
@@ -135,9 +134,6 @@ def _build_session_kwargs(
     if session_id:
         kwargs["session_id"] = session_id
 
-    if config_dir:
-        kwargs["config_dir"] = config_dir
-
     session_directory = resolve_session_directory_for_skills()
     if session_directory:
         kwargs["skill_directories"] = [session_directory]
@@ -152,7 +148,6 @@ def _build_session_kwargs(
 
 def _build_resume_kwargs(
     model: str = DEFAULT_MODEL,
-    config_dir: Optional[str] = None,
     streaming: bool = False,
     extra_tools: Optional[list] = None,
 ) -> Dict[str, Any]:
@@ -185,9 +180,6 @@ def _build_resume_kwargs(
             wire_api=wire_api,
         )
 
-    if config_dir:
-        kwargs["config_dir"] = config_dir
-
     mcp_servers = get_cached_mcp_servers()
     if mcp_servers:
         kwargs["mcp_servers"] = mcp_servers
@@ -200,7 +192,6 @@ async def run_copilot_agent(
     timeout: float = DEFAULT_TIMEOUT,
     model: str = DEFAULT_MODEL,
     session_id: Optional[str] = None,
-    streaming: bool = False,
     sandbox_tools: Optional[list] = None,
 ) -> AgentResult:
     config_dir = resolve_config_dir()
@@ -213,7 +204,7 @@ async def run_copilot_agent(
     # Resume existing session or create a new one
     if session_id and session_exists(config_dir, session_id):
         logging.info(f"Resuming existing session: {session_id}")
-        resume_kwargs = _build_resume_kwargs(model=model, config_dir=config_dir, extra_tools=extra_tools)
+        resume_kwargs = _build_resume_kwargs(model=model, extra_tools=extra_tools)
         try:
             session = await client.resume_session(session_id, **resume_kwargs)
             logging.info(f"Successfully resumed session: {session_id}")
@@ -224,7 +215,7 @@ async def run_copilot_agent(
         if session_id:
             logging.info(f"Creating new session with provided ID: {session_id}")
         session_kwargs = _build_session_kwargs(
-            model=model, config_dir=config_dir, session_id=session_id, streaming=streaming, extra_tools=extra_tools
+            model=model, session_id=session_id, extra_tools=extra_tools
         )
         session = await client.create_session(**session_kwargs)
         logging.info(f"Created new session: {session.session_id}")
@@ -242,12 +233,6 @@ async def run_copilot_agent(
 
         if event_type == "assistant.message":
             response_content.append(event.data.content)
-        elif event_type == "assistant.message_delta" and streaming:
-            if event.data.delta_content:
-                response_content.append(event.data.delta_content)
-        elif event_type == "assistant.reasoning_delta" and streaming:
-            if hasattr(event.data, "delta_content") and event.data.delta_content:
-                reasoning_content.append(event.data.delta_content)
         elif event_type == "tool.execution_start":
             tool_calls.append(
                 {
@@ -265,28 +250,16 @@ async def run_copilot_agent(
     session.on(on_event)
 
     try:
-        if streaming:
-            logging.info(f"Starting streaming session with ID: {session.session_id}")
-            return AgentResult(
-                session_id=session.session_id,
-                content=response_content[-1] if response_content else "",
-                content_intermediate=response_content[-6:-1] if len(response_content) > 1 else [],
-                tool_calls=tool_calls,
-                reasoning="".join(reasoning_content) if reasoning_content else None,
-                events=events_log,
-            )
+        await session.send_and_wait(prompt, timeout=timeout)
 
-        else:
-            await session.send_and_wait(prompt, timeout=timeout)
-
-            return AgentResult(
-                session_id=session.session_id,
-                content=response_content[-1] if response_content else "",
-                content_intermediate=response_content[-6:-1] if len(response_content) > 1 else [],
-                tool_calls=tool_calls,
-                reasoning="".join(reasoning_content) if reasoning_content else None,
-                events=events_log,
-            )
+        return AgentResult(
+            session_id=session.session_id,
+            content=response_content[-1] if response_content else "",
+            content_intermediate=response_content[-6:-1] if len(response_content) > 1 else [],
+            tool_calls=tool_calls,
+            reasoning="".join(reasoning_content) if reasoning_content else None,
+            events=events_log,
+        )
     finally:
         # Disconnect the session to release the in-memory lock and flush state to disk.
         # This allows any process (including on a different instance) to resume later.
@@ -378,7 +351,7 @@ async def run_copilot_agent_stream(
 
     if session_id and session_exists(config_dir, session_id):
         logging.info(f"[stream] Resuming existing session: {session_id}")
-        resume_kwargs = _build_resume_kwargs(model=model, config_dir=config_dir, streaming=True, extra_tools=extra_tools)
+        resume_kwargs = _build_resume_kwargs(model=model, streaming=True, extra_tools=extra_tools)
         try:
             session = await client.resume_session(session_id, **resume_kwargs, on_event=on_event)
             logging.info(f"[stream] Successfully resumed session: {session_id}")
@@ -389,7 +362,7 @@ async def run_copilot_agent_stream(
         if session_id:
             logging.info(f"[stream] Creating new session with provided ID: {session_id}")
         session_kwargs = _build_session_kwargs(
-            model=model, config_dir=config_dir, session_id=session_id, streaming=True, extra_tools=extra_tools
+            model=model, session_id=session_id, streaming=True, extra_tools=extra_tools
         )
         session = await client.create_session(**session_kwargs, on_event=on_event)
         logging.info(f"[stream] Created new session: {session.session_id}")
