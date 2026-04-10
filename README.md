@@ -4,7 +4,7 @@
 
 A markdown-first programming model for building AI agents on Azure Functions with the [GitHub Copilot SDK](https://github.com/github/copilot-sdk).
 
-- **Build agents with markdown** — write instructions, configure triggers, and bind tools in a single `.agent.md` file
+- **Build agents with markdown** — write instructions, configure triggers, and bind tools in  `.agent.md` files
 - **Run on any Azure Functions trigger** — trigger agents on timer, queue, blob, HTTP, Event Hub, Service Bus, Cosmos DB, and more
 - **Connect to 1,400+ services** — Azure API Connections let agents trigger on and perform actions across Office 365, Teams, SQL, Salesforce, SAP, and hundreds of other connectors — no custom code required
 - **Extend with MCP servers** — plug in remote HTTP MCP servers for additional capabilities
