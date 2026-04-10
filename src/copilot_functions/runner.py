@@ -6,11 +6,10 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from copilot.session import ProviderConfig, PermissionHandler
-from copilot import CopilotClient, SubprocessConfig
 import frontmatter
 
 from .client_manager import CopilotClientManager, _is_byok_mode
-from .config import get_app_root, resolve_config_dir, session_exists, clear_session_locks, substitute_env_vars_in_text, _to_bool
+from .config import get_app_root, resolve_config_dir, session_exists, substitute_env_vars_in_text, _to_bool
 from .connector_tool_cache import get_connector_tools
 from .mcp import get_cached_mcp_servers
 from .skills import resolve_session_directory_for_skills
@@ -93,23 +92,6 @@ _TOOL_RESTRICTION_PREFIX = (
 
 
 _default_permission_handler = PermissionHandler.approve_all
-
-
-async def _create_temp_client() -> CopilotClient:
-    """Create a temporary CopilotClient for session resume on a different instance.
-
-    When the singleton client's CLI process doesn't know about a session
-    created on another instance, a fresh CLI subprocess can read the
-    session state from the shared file mount.
-    """
-    app_root = str(get_app_root())
-    if _is_byok_mode():
-        temp = CopilotClient(SubprocessConfig(cwd=app_root))
-    else:
-        github_token = os.environ.get("GITHUB_TOKEN")
-        temp = CopilotClient(SubprocessConfig(github_token=github_token, cwd=app_root))
-    await temp.start()
-    return temp
 
 
 def _build_session_kwargs(
@@ -229,18 +211,15 @@ async def run_copilot_agent(
     extra_tools = connector_tools + (sandbox_tools or [])
 
     # Resume existing session or create a new one
-    temp_client = None
     if session_id and session_exists(config_dir, session_id):
         logging.info(f"Resuming existing session: {session_id}")
-        clear_session_locks(config_dir, session_id)
         resume_kwargs = _build_resume_kwargs(model=model, config_dir=config_dir, extra_tools=extra_tools)
         try:
             session = await client.resume_session(session_id, **resume_kwargs)
+            logging.info(f"Successfully resumed session: {session_id}")
         except Exception as e:
-            logging.warning(f"Failed to resume session on singleton client: {e}. Retrying with temp client.")
-            clear_session_locks(config_dir, session_id)
-            temp_client = await _create_temp_client()
-            session = await temp_client.resume_session(session_id, **resume_kwargs)
+            logging.error(f"Failed to resume session '{session_id}': {e}", exc_info=True)
+            raise
     else:
         if session_id:
             logging.info(f"Creating new session with provided ID: {session_id}")
@@ -248,6 +227,7 @@ async def run_copilot_agent(
             model=model, config_dir=config_dir, session_id=session_id, streaming=streaming, extra_tools=extra_tools
         )
         session = await client.create_session(**session_kwargs)
+        logging.info(f"Created new session: {session.session_id}")
 
     response_content: List[str] = []
     tool_calls: List[Dict[str, Any]] = []
@@ -308,11 +288,13 @@ async def run_copilot_agent(
                 events=events_log,
             )
     finally:
-        if temp_client:
-            try:
-                await temp_client.stop()
-            except Exception:
-                pass
+        # Disconnect the session to release the in-memory lock and flush state to disk.
+        # This allows any process (including on a different instance) to resume later.
+        try:
+            await session.disconnect()
+            logging.info(f"Disconnected session: {session.session_id}")
+        except Exception as e:
+            logging.warning(f"Failed to disconnect session {session.session_id}: {e}")
 
 
 _STREAM_SENTINEL = object()
@@ -394,18 +376,15 @@ async def run_copilot_agent_stream(
     connector_tools = await get_connector_tools()
     extra_tools = connector_tools + (sandbox_tools or [])
 
-    temp_client = None
     if session_id and session_exists(config_dir, session_id):
         logging.info(f"[stream] Resuming existing session: {session_id}")
-        clear_session_locks(config_dir, session_id)
         resume_kwargs = _build_resume_kwargs(model=model, config_dir=config_dir, streaming=True, extra_tools=extra_tools)
         try:
             session = await client.resume_session(session_id, **resume_kwargs, on_event=on_event)
+            logging.info(f"[stream] Successfully resumed session: {session_id}")
         except Exception as e:
-            logging.warning(f"[stream] Failed to resume session on singleton client: {e}. Retrying with temp client.")
-            clear_session_locks(config_dir, session_id)
-            temp_client = await _create_temp_client()
-            session = await temp_client.resume_session(session_id, **resume_kwargs, on_event=on_event)
+            logging.error(f"[stream] Failed to resume session '{session_id}': {e}", exc_info=True)
+            raise
     else:
         if session_id:
             logging.info(f"[stream] Creating new session with provided ID: {session_id}")
@@ -413,6 +392,7 @@ async def run_copilot_agent_stream(
             model=model, config_dir=config_dir, session_id=session_id, streaming=True, extra_tools=extra_tools
         )
         session = await client.create_session(**session_kwargs, on_event=on_event)
+        logging.info(f"[stream] Created new session: {session.session_id}")
 
     # Yield the session ID first so the client knows it immediately
     yield f"data: {json.dumps({'type': 'session', 'session_id': session.session_id})}\n\n"
@@ -438,8 +418,9 @@ async def run_copilot_agent_stream(
     except asyncio.TimeoutError:
         yield f"data: {json.dumps({'type': 'error', 'content': 'Timeout waiting for response'})}\n\n"
     finally:
-        if temp_client:
-            try:
-                await temp_client.stop()
-            except Exception:
-                pass
+        # Disconnect the session to release the in-memory lock and flush state to disk.
+        try:
+            await session.disconnect()
+            logging.info(f"[stream] Disconnected session: {session.session_id}")
+        except Exception as e:
+            logging.warning(f"[stream] Failed to disconnect session {session.session_id}: {e}")

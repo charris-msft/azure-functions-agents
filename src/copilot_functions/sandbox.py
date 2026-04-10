@@ -69,8 +69,8 @@ _EXECUTE_PYTHON_DESCRIPTION = (
     " or jq tools instead.\n"
     "\n"
     "Only use this tool when you need to actually run code,"
-    " when no other tool can accomplish the task (there's a small cost to use it) —"
-    " computation, data processing, web browsing, file operations, etc."
+    " when no other tool can accomplish the task (there's a small cost to using it) —"
+    " computation, data processing, web browsing, etc."
     " Do NOT call this tool just to print text, format output, or display"
     " results you already have. Respond directly with text instead.\n"
     "\n"
@@ -80,6 +80,7 @@ _EXECUTE_PYTHON_DESCRIPTION = (
     "- The last expression value is returned in 'result' (like a"
     " Jupyter cell). Use print() for explicit output to 'stdout'.\n"
     "- Top-level await is supported (Jupyter kernel).\n"
+    "- Playwright is pre-installed for browser automation (see `launch_browser` helper below).\n"
     "- Shell commands: use subprocess.run(), not '!' syntax.\n"
     "- Common packages are pre-installed: numpy, pandas, matplotlib,"
     " scikit-learn, playwright, etc.\n"
@@ -98,7 +99,7 @@ _EXECUTE_PYTHON_DESCRIPTION = (
     "\n"
     "Playwright (browser automation):\n"
     "- A helper is pre-loaded: page = await launch_browser()\n"
-    "  Returns a Playwright Page with anti-detection settings.\n"
+    "  Returns a Playwright Page with better default settings.\n"
     "  Call it once, then reuse `page` across calls (state persists).\n"
     "- Use the async API with top-level await.\n"
     "- To see what's on a page, you can:\n"
@@ -115,10 +116,6 @@ _EXECUTE_PYTHON_DESCRIPTION = (
     "  when you need to understand visual layout or image content.\n"
     "- Use CSS selectors and aria attributes to find and interact\n"
     "  with elements.\n"
-    "- If a site blocks you with a CAPTCHA,\n"
-    "  try to solve it first. If you're unable to,\n"
-    "  try a different site rather than\n"
-    "  retrying the same one.\n"
 )
 
 # ---------------------------------------------------------------------------
