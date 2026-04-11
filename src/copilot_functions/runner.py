@@ -15,7 +15,7 @@ from .mcp import get_cached_mcp_servers
 from .skills import resolve_session_directory_for_skills
 from .tools import _REGISTERED_TOOLS_CACHE
 
-DEFAULT_TIMEOUT = 300.0
+DEFAULT_TIMEOUT = float(os.environ.get("COPILOT_AGENT_TIMEOUT", "900"))
 
 
 @dataclass
