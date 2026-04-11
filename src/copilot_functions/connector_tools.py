@@ -49,6 +49,10 @@ def _build_invoke_path(op: ParsedOperation, args: dict, all_params: list[ParsedP
             if value is None:
                 raise ValueError(f"Missing required path parameter: {param.name}")
             path = path.replace(f"{{{param.name}}}", quote(str(value), safe=""))
+    # Substitute internal path params with their defaults
+    for param in op.internal_params:
+        if param.location == "path" and param.default is not None:
+            path = path.replace(f"{{{param.name}}}", quote(str(param.default), safe=""))
     return path
 
 
@@ -138,6 +142,12 @@ def generate_tools(
                         if key in args:
                             queries[param.name] = args[key]
 
+                # Inject internal query params with defaults
+                for param in op.internal_params:
+                    if param.location == "query" and param.default is not None:
+                        if param.name not in queries:
+                            queries[param.name] = param.default
+
                 body = {}
                 for param in op.body_properties:
                     key = _sanitize_name(param.name)
@@ -156,6 +166,12 @@ def generate_tools(
                             body[parts[0]][parts[1]] = value
                         else:
                             body[param.name] = value
+
+                # Inject internal body params with defaults
+                for param in op.internal_params:
+                    if param.location == "body" and param.default is not None:
+                        if param.name not in body:
+                            body[param.name] = param.default
 
                 try:
                     if data_plane_client and connection.connection_runtime_url:

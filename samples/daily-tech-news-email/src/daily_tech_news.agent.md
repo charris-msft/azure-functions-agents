@@ -11,7 +11,6 @@ execution_sandbox:
 
 tools_from_connections:
   - connection_id: $O365_CONNECTION_ID
-    prefix: email
 ---
 
 You are a news assistant. When triggered, do the following:

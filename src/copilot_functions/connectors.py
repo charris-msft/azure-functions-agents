@@ -28,6 +28,7 @@ class ParsedOperation:
     parameters: list[ParsedParameter] = field(default_factory=list)
     body_properties: list[ParsedParameter] = field(default_factory=list)
     body_required_fields: list[str] = field(default_factory=list)
+    internal_params: list[ParsedParameter] = field(default_factory=list)
 
 
 @dataclass
@@ -72,10 +73,20 @@ def _extract_body_properties(
     required_fields = resolved.get("required", [])
     params = []
 
+    internal_params = []
     for prop_name, prop_schema in properties.items():
         prop_resolved = _resolve_schema(prop_schema, swagger)
         visibility = prop_resolved.get("x-ms-visibility", "")
         if visibility == "internal":
+            if prop_resolved.get("default") is not None:
+                internal_params.append(ParsedParameter(
+                    name=prop_name,
+                    location="body",
+                    type=prop_resolved.get("type", "string"),
+                    required=False,
+                    description="",
+                    default=prop_resolved.get("default"),
+                ))
             continue
 
         prop_type = prop_resolved.get("type", "string")
@@ -122,7 +133,7 @@ def _extract_body_properties(
             default=prop_resolved.get("default"),
         ))
 
-    return params, required_fields
+    return params, required_fields, internal_params
 
 
 async def _resolve_dynamic_schema(
@@ -221,6 +232,7 @@ async def _parse_operations(
             description = op.get("description", "")
 
             params = []
+            internal_params = []
             body_props = []
             body_required: list[str] = []
 
@@ -240,14 +252,17 @@ async def _parse_operations(
                             connection_runtime_url=connection_runtime_url,
                         )
                         if dyn_schema:
-                            body_props, body_required = _extract_body_properties(
+                            body_props, body_required, body_internal = _extract_body_properties(
                                 {"properties": dyn_schema.get("properties", {}), "required": dyn_schema.get("required", [])},
                                 swagger,
                             )
+                            internal_params.extend(body_internal)
                         else:
-                            body_props, body_required = _extract_body_properties(schema, swagger)
+                            body_props, body_required, body_internal = _extract_body_properties(schema, swagger)
+                            internal_params.extend(body_internal)
                     else:
-                        body_props, body_required = _extract_body_properties(schema, swagger)
+                        body_props, body_required, body_internal = _extract_body_properties(schema, swagger)
+                        internal_params.extend(body_internal)
                     continue
 
                 if param.get("name") == "connectionId":
@@ -255,6 +270,15 @@ async def _parse_operations(
 
                 param_visibility = param.get("x-ms-visibility", "")
                 if param_visibility == "internal":
+                    if param.get("default") is not None:
+                        internal_params.append(ParsedParameter(
+                            name=param.get("name", ""),
+                            location=param_in,
+                            type=param.get("type", "string"),
+                            required=False,
+                            description="",
+                            default=param.get("default"),
+                        ))
                     continue
 
                 params.append(ParsedParameter(
@@ -277,6 +301,7 @@ async def _parse_operations(
                 parameters=params,
                 body_properties=body_props,
                 body_required_fields=body_required,
+                internal_params=internal_params,
             )
 
             annotation = op.get("x-ms-api-annotation", {})
