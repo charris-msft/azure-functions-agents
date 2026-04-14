@@ -3,8 +3,8 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "copilot-functions"
-version = "0.6.4"
+name = "azure-functions-agents"
+version = "0.7.0"
 description = "A markdown-first programming model for building AI agents on Azure Functions with the GitHub Copilot SDK."
 readme = "README.md"
 license = {text = "MIT"}
@@ -28,4 +28,4 @@ connectors = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-copilot_functions = ["public/**"]
+azure_functions_agents = ["public/**"]

@@ -266,7 +266,7 @@ Ref: [Azure Functions SQL trigger](https://learn.microsoft.com/azure/azure-funct
 
 ## Connector triggers
 
-Triggers from [Azure API Connections](https://learn.microsoft.com/azure/connectors/connectors-overview) (Teams, Office 365, Dynamics, etc.) use dot notation. These require the [`azure-functions-connectors`](https://github.com/anthonychu/azure-functions-connectors-python) package (`copilot-functions[connectors]`).
+Triggers from [Azure API Connections](https://learn.microsoft.com/azure/connectors/connectors-overview) (Teams, Office 365, Dynamics, etc.) use dot notation. These require the [`azure-functions-connectors`](https://github.com/anthonychu/azure-functions-connectors-python) package (`azure-functions-agents[connectors]`).
 
 ```yaml
 trigger:

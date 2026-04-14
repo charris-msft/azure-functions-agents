@@ -1,4 +1,4 @@
-# copilot-functions (Experimental)
+# azure-functions-agents (Experimental)
 
 > **⚠️ This is an experimental package.** The APIs described here are under active development and subject to change.
 
@@ -19,13 +19,13 @@ A markdown-first programming model for building AI agents on Azure Functions wit
 Install directly from the release URL:
 
 ```bash
-pip install https://github.com/anthonychu/copilot-functions/releases/download/v0.6.4/copilot_functions-0.6.4-py3-none-any.whl
+pip install https://github.com/anthonychu/copilot-functions/releases/download/v0.7.0/azure_functions_agents-0.7.0-py3-none-any.whl
 ```
 
 ### From the GitHub repo
 
 ```bash
-pip install copilot-functions @ git+https://github.com/anthonychu/copilot-functions.git
+pip install azure-functions-agents @ git+https://github.com/anthonychu/copilot-functions.git
 ```
 
 ### With connector tools support
@@ -34,10 +34,10 @@ Connector tools (Teams, Office 365, SQL, Salesforce, etc.) require an optional e
 
 ```bash
 # From release URL
-pip install "copilot-functions[connectors] @ https://github.com/anthonychu/copilot-functions/releases/download/v0.6.4/copilot_functions-0.6.4-py3-none-any.whl"
+pip install "azure-functions-agents[connectors] @ https://github.com/anthonychu/copilot-functions/releases/download/v0.7.0/azure_functions_agents-0.7.0-py3-none-any.whl"
 
 # From repo
-pip install "copilot-functions[connectors] @ git+https://github.com/anthonychu/copilot-functions.git"
+pip install "azure-functions-agents[connectors] @ git+https://github.com/anthonychu/copilot-functions.git"
 ```
 
 ## GitHub Token
@@ -45,7 +45,7 @@ pip install "copilot-functions[connectors] @ git+https://github.com/anthonychu/c
 The Copilot SDK requires a GitHub Personal Access Token (PAT) to authenticate with the GitHub Copilot API.
 
 1. Go to [github.com/settings/tokens](https://github.com/settings/tokens?type=beta) and click **Generate new token** (fine-grained)
-2. Give the token a name (e.g. `copilot-functions`)
+2. Give the token a name (e.g. `azure-functions-agents`)
 3. Under **Permissions**, select **Add permissions**, then select **Copilot requests**, and set it to **Read-only**
 4. Click **Generate token** and copy the value
 
@@ -71,7 +71,7 @@ You are a helpful assistant. Answer questions concisely.
 Create `function_app.py`:
 
 ```python
-from copilot_functions import create_function_app
+from azure_functions_agents import create_function_app
 
 app = create_function_app()
 ```
@@ -98,7 +98,7 @@ app = create_function_app()
 ### 4. Create `requirements.txt`
 
 ```
-https://github.com/anthonychu/copilot-functions/releases/download/v0.6.4/copilot_functions-0.6.4-py3-none-any.whl
+https://github.com/anthonychu/copilot-functions/releases/download/v0.7.0/azure_functions_agents-0.7.0-py3-none-any.whl
 ```
 
 Or use any other install method from the [Installation](#installation) section.
@@ -357,7 +357,7 @@ pip install -e ".[connectors]"
 # Build a wheel
 pip install build
 python -m build --wheel
-# Output: dist/copilot_functions-0.6.4-py3-none-any.whl
+# Output: dist/azure_functions_agents-0.7.0-py3-none-any.whl
 ```
 
 ## Contributing
