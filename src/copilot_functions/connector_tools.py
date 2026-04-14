@@ -39,8 +39,13 @@ def _param_to_json_schema(param: ParsedParameter) -> dict:
     return schema
 
 
-def _build_invoke_path(op: ParsedOperation, args: dict, all_params: list[ParsedParameter]) -> str:
-    """Build the dynamicInvoke path by stripping /{connectionId} and substituting path params."""
+def _build_invoke_path(op: ParsedOperation, args: dict, all_params: list[ParsedParameter], url_encode: bool = True) -> str:
+    """Build the invoke path by stripping /{connectionId} and substituting path params.
+
+    When url_encode is False (V1 dynamicInvoke), path param values are inserted
+    as-is since the path is a JSON field, not a real URL.  When True (V2 data
+    plane), values are percent-encoded for use in an HTTP URL.
+    """
     path = re.sub(r"^/\{connectionId\}", "", op.path, flags=re.IGNORECASE)
     for param in all_params:
         if param.location == "path":
@@ -48,11 +53,13 @@ def _build_invoke_path(op: ParsedOperation, args: dict, all_params: list[ParsedP
             value = args.get(sanitized)
             if value is None:
                 raise ValueError(f"Missing required path parameter: {param.name}")
-            path = path.replace(f"{{{param.name}}}", quote(str(value), safe=""))
+            replacement = quote(str(value), safe="") if url_encode else str(value)
+            path = path.replace(f"{{{param.name}}}", replacement)
     # Substitute internal path params with their defaults
     for param in op.internal_params:
         if param.location == "path" and param.default is not None:
-            path = path.replace(f"{{{param.name}}}", quote(str(param.default), safe=""))
+            replacement = quote(str(param.default), safe="") if url_encode else str(param.default)
+            path = path.replace(f"{{{param.name}}}", replacement)
     return path
 
 
@@ -133,7 +140,9 @@ def generate_tools(
             async def handler(invocation: ToolInvocation) -> ToolResult:
                 args = invocation.arguments or {}
 
-                invoke_path = _build_invoke_path(op, args, all_params)
+                # V2 uses direct HTTP URLs (need encoding); V1 uses JSON path field (no encoding)
+                is_v2 = bool(data_plane_client and connection.connection_runtime_url)
+                invoke_path = _build_invoke_path(op, args, all_params, url_encode=is_v2)
 
                 queries = {}
                 for param in op.parameters:
@@ -206,10 +215,28 @@ def generate_tools(
                         )
                         response = result.get("response", {})
                         response_body = response.get("body", result)
+                        raw_status = response.get("statusCode", 200)
                         try:
-                            status_code = int(response.get("statusCode", 200))
+                            status_code = int(raw_status)
                         except (ValueError, TypeError):
-                            status_code = 200
+                            # statusCode can be a string like "NotFound", "Created", etc.
+                            status_str = str(raw_status).lower()
+                            if status_str in ("notfound",):
+                                status_code = 404
+                            elif status_str in ("badrequest",):
+                                status_code = 400
+                            elif status_str in ("unauthorized",):
+                                status_code = 401
+                            elif status_str in ("forbidden",):
+                                status_code = 403
+                            elif status_str in ("internalservererror",):
+                                status_code = 500
+                            elif status_str in ("created",):
+                                status_code = 201
+                            elif status_str in ("ok", "accepted", "nocontent"):
+                                status_code = 200
+                            else:
+                                status_code = 500  # unknown status, treat as error
 
                         if status_code >= 400:
                             return ToolResult(
