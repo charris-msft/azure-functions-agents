@@ -532,6 +532,37 @@ def create_function_app(app_root: Path | None = None) -> func.FunctionApp:
     # ---- Register triggered agents from *.agent.md ----
     _register_triggered_agents(app, resolved_root)
 
+    # ---- Build registry of chat-enabled agents (non-main, no trigger) ----
+    _RESERVED_AGENT_NAMES = {"chat", "chatstream"}
+    agent_registry: Dict[str, Dict[str, Any]] = {}
+    for agent_path_str in sorted(glob.glob(str(resolved_root / "*.agent.md"))):
+        apath = Path(agent_path_str)
+        if apath.name == "main.agent.md":
+            continue
+        agent_data = _load_agent_file(apath)
+        if not agent_data:
+            continue
+        meta = agent_data["metadata"]
+        # Only expose agents without a trigger as chat agents
+        if isinstance(meta.get("trigger"), dict) and "type" in meta.get("trigger", {}):
+            continue
+        stem = apath.name.removesuffix(".agent.md")
+        if stem in _RESERVED_AGENT_NAMES:
+            logging.warning(f"Skipping chat registration for agent '{stem}': name is reserved")
+            continue
+        agent_sandbox = []
+        if isinstance(meta.get("execution_sandbox"), dict):
+            agent_sandbox = create_sandbox_tools(meta["execution_sandbox"])
+        agent_conns = meta.get("tools_from_connections")
+        if isinstance(agent_conns, list):
+            configure_connector_tools(agent_conns)
+        agent_registry[stem] = {
+            "content": agent_data["content"],
+            "metadata": meta,
+            "sandbox_tools": agent_sandbox,
+        }
+        logging.info(f"Registered chat agent '{stem}' — /agent/{stem}")
+
     # ---- Configure main agent (if present) ----
     metadata: Dict[str, Any] = {}
     main_sandbox_tools: list = []
@@ -568,23 +599,40 @@ def create_function_app(app_root: Path | None = None) -> func.FunctionApp:
         auth_level=func.AuthLevel.ANONYMOUS,
     )
     def root_chat_page(req: Request) -> Response:
-        """Serve the chat UI at the root route."""
+        """Serve the chat UI at the root route or at /agent/{name}."""
         ignored = (req.path_params or {}).get("ignored", "")
-        if ignored:
-            return Response("Not found", status_code=404)
 
-        if not main_agent:
-            return Response("Not found", status_code=404)
+        # Root path: serve main agent UI
+        if not ignored:
+            if not main_agent:
+                return Response("Not found", status_code=404)
 
-        index_path = Path(__file__).parent / "public" / "index.html"
-        if not index_path.exists():
-            return Response("index.html not found", status_code=404)
+            index_path = Path(__file__).parent / "public" / "index.html"
+            if not index_path.exists():
+                return Response("index.html not found", status_code=404)
 
-        return Response(
-            index_path.read_text(encoding="utf-8"),
-            status_code=200,
-            media_type="text/html",
-        )
+            return Response(
+                index_path.read_text(encoding="utf-8"),
+                status_code=200,
+                media_type="text/html",
+            )
+
+        # Named agent path: /agent/{name}
+        match = re.match(r"^agent/([^/]+)$", ignored)
+        if match:
+            name = match.group(1)
+            if name in agent_registry:
+                index_path = Path(__file__).parent / "public" / "index.html"
+                if not index_path.exists():
+                    return Response("index.html not found", status_code=404)
+
+                return Response(
+                    index_path.read_text(encoding="utf-8"),
+                    status_code=200,
+                    media_type="text/html",
+                )
+
+        return Response("Not found", status_code=404)
 
     @app.route(route="agent/chat", methods=["POST"])
     async def chat(req: Request) -> Response:
@@ -680,6 +728,89 @@ def create_function_app(app_root: Path | None = None) -> func.FunctionApp:
             async def error_gen():
                 yield f"data: {json.dumps({'type': 'error', 'content': error_msg})}\n\n"
             return StreamingResponse(error_gen(), media_type="text/event-stream")
+
+    # ---- Named agent chat endpoints ----
+
+    @app.route(route="agent/{agent_name}/chat", methods=["POST"])
+    async def named_agent_chat(req: Request) -> Response:
+        """Chat endpoint for a named agent. POST /agent/{name}/chat"""
+        agent_name = (req.path_params or {}).get("agent_name", "")
+        agent_data = agent_registry.get(agent_name)
+        if not agent_data:
+            return Response(
+                json.dumps({"error": f"Agent '{agent_name}' not found"}),
+                status_code=404,
+                media_type="application/json",
+            )
+        try:
+            body = await req.json()
+            prompt = body.get("prompt")
+            if not prompt:
+                return Response(
+                    json.dumps({"error": "Missing 'prompt'"}),
+                    status_code=400,
+                    media_type="application/json",
+                )
+            session_id = req.headers.get("x-ms-session-id")
+            result = await run_copilot_agent(
+                prompt,
+                session_id=session_id,
+                sandbox_tools=agent_data["sandbox_tools"],
+                agent_instructions=agent_data["content"],
+            )
+            return Response(
+                json.dumps({
+                    "session_id": result.session_id,
+                    "response": result.content,
+                    "response_intermediate": result.content_intermediate,
+                    "tool_calls": result.tool_calls,
+                }),
+                media_type="application/json",
+                headers={"x-ms-session-id": result.session_id},
+            )
+        except Exception as e:
+            error_msg = str(e) if str(e) else f"{type(e).__name__}: {repr(e)}"
+            logging.error(f"Named agent chat error ({agent_name}): {error_msg}")
+            return Response(
+                json.dumps({"error": error_msg}),
+                status_code=500,
+                media_type="application/json",
+            )
+
+    @app.route(route="agent/{agent_name}/chatstream", methods=["POST"])
+    async def named_agent_chatstream(req: Request) -> StreamingResponse:
+        """Streaming chat endpoint for a named agent. POST /agent/{name}/chatstream"""
+        agent_name = (req.path_params or {}).get("agent_name", "")
+        agent_data = agent_registry.get(agent_name)
+        if not agent_data:
+            async def not_found_gen():
+                yield f"data: {json.dumps({'type': 'error', 'content': f'Agent not found: {agent_name}'})}\n\n"
+            return StreamingResponse(not_found_gen(), media_type="text/event-stream", status_code=404)
+
+        try:
+            body = await req.json()
+            prompt = body.get("prompt")
+            if not prompt:
+                async def missing_prompt_gen():
+                    yield f"data: {json.dumps({'type': 'error', 'content': 'Missing prompt'})}\n\n"
+                return StreamingResponse(missing_prompt_gen(), media_type="text/event-stream")
+
+            session_id = req.headers.get("x-ms-session-id")
+            return StreamingResponse(
+                run_copilot_agent_stream(
+                    prompt,
+                    session_id=session_id,
+                    sandbox_tools=agent_data["sandbox_tools"],
+                    agent_instructions=agent_data["content"],
+                ),
+                media_type="text/event-stream",
+            )
+        except Exception as e:
+            error_msg = str(e) if str(e) else f"{type(e).__name__}: {repr(e)}"
+            logging.error(f"Named agent chatstream error ({agent_name}): {error_msg}")
+            async def stream_error_gen():
+                yield f"data: {json.dumps({'type': 'error', 'content': error_msg})}\n\n"
+            return StreamingResponse(stream_error_gen(), media_type="text/event-stream")
 
     # ---- MCP tool (only when main agent exists) ----
 

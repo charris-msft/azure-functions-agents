@@ -98,13 +98,15 @@ def _build_base_kwargs(
     model: str = DEFAULT_MODEL,
     streaming: bool = False,
     extra_tools: Optional[list] = None,
+    agent_instructions: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build kwargs shared by both session creation and resume."""
     all_tools = list(_REGISTERED_TOOLS_CACHE)
     if extra_tools:
         all_tools.extend(extra_tools)
 
-    system_content = _TOOL_RESTRICTION_PREFIX + _AGENTS_MD_CONTENT_CACHE
+    instructions = agent_instructions if agent_instructions is not None else _AGENTS_MD_CONTENT_CACHE
+    system_content = _TOOL_RESTRICTION_PREFIX + instructions
 
     kwargs: Dict[str, Any] = {
         "model": model,
@@ -143,8 +145,9 @@ def _build_session_kwargs(
     session_id: Optional[str] = None,
     streaming: bool = False,
     extra_tools: Optional[list] = None,
+    agent_instructions: Optional[str] = None,
 ) -> Dict[str, Any]:
-    kwargs = _build_base_kwargs(model=model, streaming=streaming, extra_tools=extra_tools)
+    kwargs = _build_base_kwargs(model=model, streaming=streaming, extra_tools=extra_tools, agent_instructions=agent_instructions)
 
     if session_id:
         kwargs["session_id"] = session_id
@@ -161,8 +164,9 @@ def _build_resume_kwargs(
     model: str = DEFAULT_MODEL,
     streaming: bool = False,
     extra_tools: Optional[list] = None,
+    agent_instructions: Optional[str] = None,
 ) -> Dict[str, Any]:
-    return _build_base_kwargs(model=model, streaming=streaming, extra_tools=extra_tools)
+    return _build_base_kwargs(model=model, streaming=streaming, extra_tools=extra_tools, agent_instructions=agent_instructions)
 
 
 async def _disable_non_project_skills(session) -> None:
@@ -198,6 +202,7 @@ async def run_copilot_agent(
     model: str = DEFAULT_MODEL,
     session_id: Optional[str] = None,
     sandbox_tools: Optional[list] = None,
+    agent_instructions: Optional[str] = None,
 ) -> AgentResult:
     config_dir = resolve_config_dir()
     client = await CopilotClientManager.get_client()
@@ -209,7 +214,7 @@ async def run_copilot_agent(
     # Resume existing session or create a new one
     if session_id and session_exists(config_dir, session_id):
         logging.info(f"Resuming existing session: {session_id}")
-        resume_kwargs = _build_resume_kwargs(model=model, extra_tools=extra_tools)
+        resume_kwargs = _build_resume_kwargs(model=model, extra_tools=extra_tools, agent_instructions=agent_instructions)
         try:
             session = await client.resume_session(session_id, **resume_kwargs)
             logging.info(f"Successfully resumed session: {session_id}")
@@ -220,7 +225,8 @@ async def run_copilot_agent(
         if session_id:
             logging.info(f"Creating new session with provided ID: {session_id}")
         session_kwargs = _build_session_kwargs(
-            model=model, session_id=session_id, extra_tools=extra_tools
+            model=model, session_id=session_id, extra_tools=extra_tools,
+            agent_instructions=agent_instructions,
         )
         session = await client.create_session(**session_kwargs)
         logging.info(f"Created new session: {session.session_id}")
@@ -285,6 +291,7 @@ async def run_copilot_agent_stream(
     model: str = DEFAULT_MODEL,
     session_id: Optional[str] = None,
     sandbox_tools: Optional[list] = None,
+    agent_instructions: Optional[str] = None,
 ):
     """Async generator that yields SSE-formatted events as the agent streams a response.
 
@@ -357,7 +364,7 @@ async def run_copilot_agent_stream(
 
     if session_id and session_exists(config_dir, session_id):
         logging.info(f"[stream] Resuming existing session: {session_id}")
-        resume_kwargs = _build_resume_kwargs(model=model, streaming=True, extra_tools=extra_tools)
+        resume_kwargs = _build_resume_kwargs(model=model, streaming=True, extra_tools=extra_tools, agent_instructions=agent_instructions)
         try:
             session = await client.resume_session(session_id, **resume_kwargs, on_event=on_event)
             logging.info(f"[stream] Successfully resumed session: {session_id}")
@@ -368,7 +375,8 @@ async def run_copilot_agent_stream(
         if session_id:
             logging.info(f"[stream] Creating new session with provided ID: {session_id}")
         session_kwargs = _build_session_kwargs(
-            model=model, session_id=session_id, streaming=True, extra_tools=extra_tools
+            model=model, session_id=session_id, streaming=True, extra_tools=extra_tools,
+            agent_instructions=agent_instructions,
         )
         session = await client.create_session(**session_kwargs, on_event=on_event)
         logging.info(f"[stream] Created new session: {session.session_id}")

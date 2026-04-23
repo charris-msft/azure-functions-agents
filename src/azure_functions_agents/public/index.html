@@ -522,6 +522,15 @@
 
 		const defaultBaseUrl = `${location.protocol}//${location.host}`;
 
+		// Derive chat API prefix from the current URL path.
+		// /agent/foo → "agent/foo", / → "agent"
+		const chatApiPrefix = (() => {
+			const path = location.pathname.replace(/\/+$/, "");
+			const match = path.match(/^\/agent\/([^/]+)$/);
+			if (match) return `agent/${match[1]}`;
+			return "agent";
+		})();
+
 		const state = {
 			baseUrl: "",
 			key: "",
@@ -1119,7 +1128,7 @@
 
 		async function sendMessage(prompt, callbacks = {}) {
 			const authQuery = state.key ? `?code=${encodeURIComponent(state.key)}` : "";
-			const endpoint = `${state.baseUrl}/agent/chatstream${authQuery}`;
+			const endpoint = `${state.baseUrl}/${chatApiPrefix}/chatstream${authQuery}`;
 			const headers = {
 				"Content-Type": "application/json",
 				"Accept": "text/event-stream"
@@ -1490,6 +1499,11 @@
 
 		loadSettings();
 		loadSettingsFromHash();
+		// Update page title for named agents
+		if (chatApiPrefix !== "agent") {
+			const agentName = chatApiPrefix.replace("agent/", "");
+			document.title = `${agentName} — Copilot Chat`;
+		}
 		if (!state.baseUrl || (requiresFunctionKey(state.baseUrl) && !state.key)) {
 			state.baseUrl = state.baseUrl || defaultBaseUrl;
 			showSettings(true);
