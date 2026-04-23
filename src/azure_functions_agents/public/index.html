@@ -522,13 +522,15 @@
 
 		const defaultBaseUrl = `${location.protocol}//${location.host}`;
 
-		// Derive chat API prefix from the current URL path.
-		// /agent/foo → "agent/foo", / → "agent"
-		const chatApiPrefix = (() => {
+		// Derive the named agent (if any) from the current URL path.
+		// /agent/foo → "foo", /foo → "foo", / → null
+		const namedAgent = (() => {
 			const path = location.pathname.replace(/\/+$/, "");
-			const match = path.match(/^\/agent\/([^/]+)$/);
-			if (match) return `agent/${match[1]}`;
-			return "agent";
+			const agentMatch = path.match(/^\/agent\/([^/]+)$/);
+			if (agentMatch) return agentMatch[1];
+			const shortMatch = path.match(/^\/([^/]+)$/);
+			if (shortMatch) return shortMatch[1];
+			return null;
 		})();
 
 		const state = {
@@ -1128,7 +1130,7 @@
 
 		async function sendMessage(prompt, callbacks = {}) {
 			const authQuery = state.key ? `?code=${encodeURIComponent(state.key)}` : "";
-			const endpoint = `${state.baseUrl}/${chatApiPrefix}/chatstream${authQuery}`;
+			const endpoint = `${state.baseUrl}/agent/chatstream${authQuery}`;
 			const headers = {
 				"Content-Type": "application/json",
 				"Accept": "text/event-stream"
@@ -1138,10 +1140,13 @@
 				headers["x-ms-session-id"] = state.sessionId;
 			}
 
+			const body = { prompt };
+			if (namedAgent) body.agent = namedAgent;
+
 			const response = await fetch(endpoint, {
 				method: "POST",
 				headers,
-				body: JSON.stringify({ prompt })
+				body: JSON.stringify(body)
 			});
 
 			if (!response.ok) {
@@ -1500,9 +1505,8 @@
 		loadSettings();
 		loadSettingsFromHash();
 		// Update page title for named agents
-		if (chatApiPrefix !== "agent") {
-			const agentName = chatApiPrefix.replace("agent/", "");
-			document.title = `${agentName} — Copilot Chat`;
+		if (namedAgent) {
+			document.title = `${namedAgent} — Copilot Chat`;
 		}
 		if (!state.baseUrl || (requiresFunctionKey(state.baseUrl) && !state.key)) {
 			state.baseUrl = state.baseUrl || defaultBaseUrl;

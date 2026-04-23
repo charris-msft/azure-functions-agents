@@ -532,7 +532,7 @@ def create_function_app(app_root: Path | None = None) -> func.FunctionApp:
     # ---- Register triggered agents from *.agent.md ----
     _register_triggered_agents(app, resolved_root)
 
-    # ---- Build registry of chat-enabled agents (non-main, no trigger) ----
+    # ---- Build registry of chat-enabled agents (non-main) ----
     _RESERVED_AGENT_NAMES = {"chat", "chatstream"}
     agent_registry: Dict[str, Dict[str, Any]] = {}
     for agent_path_str in sorted(glob.glob(str(resolved_root / "*.agent.md"))):
@@ -543,9 +543,6 @@ def create_function_app(app_root: Path | None = None) -> func.FunctionApp:
         if not agent_data:
             continue
         meta = agent_data["metadata"]
-        # Only expose agents without a trigger as chat agents
-        if isinstance(meta.get("trigger"), dict) and "type" in meta.get("trigger", {}):
-            continue
         stem = apath.name.removesuffix(".agent.md")
         if stem in _RESERVED_AGENT_NAMES:
             logging.warning(f"Skipping chat registration for agent '{stem}': name is reserved")
@@ -561,7 +558,7 @@ def create_function_app(app_root: Path | None = None) -> func.FunctionApp:
             "metadata": meta,
             "sandbox_tools": agent_sandbox,
         }
-        logging.info(f"Registered chat agent '{stem}' — /agent/{stem}")
+        logging.info(f"Registered chat agent '{stem}' — /{stem}")
 
     # ---- Configure main agent (if present) ----
     metadata: Dict[str, Any] = {}
@@ -599,7 +596,7 @@ def create_function_app(app_root: Path | None = None) -> func.FunctionApp:
         auth_level=func.AuthLevel.ANONYMOUS,
     )
     def root_chat_page(req: Request) -> Response:
-        """Serve the chat UI at the root route or at /agent/{name}."""
+        """Serve the chat UI at the root route or at /{name}."""
         ignored = (req.path_params or {}).get("ignored", "")
 
         # Root path: serve main agent UI
@@ -617,8 +614,8 @@ def create_function_app(app_root: Path | None = None) -> func.FunctionApp:
                 media_type="text/html",
             )
 
-        # Named agent path: /agent/{name}
-        match = re.match(r"^agent/([^/]+)$", ignored)
+        # Named agent path: /{name} or /agent/{name}
+        match = re.match(r"^(?:agent/)?([^/]+)$", ignored)
         if match:
             name = match.group(1)
             if name in agent_registry:
@@ -644,7 +641,8 @@ def create_function_app(app_root: Path | None = None) -> func.FunctionApp:
             x-ms-session-id (optional): Session ID for resuming a previous session
         Body:
         {
-            "prompt": "What is 2+2?"
+            "prompt": "What is 2+2?",
+            "agent": "weatherf"  // optional — use a named agent instead of main
         }
         """
         try:
@@ -658,8 +656,34 @@ def create_function_app(app_root: Path | None = None) -> func.FunctionApp:
                     media_type="application/json",
                 )
 
+            # Resolve agent: named agent from body, or main agent
+            requested_agent = body.get("agent")
+            sandbox_tools = main_sandbox_tools
+            agent_instructions = None
+            if requested_agent:
+                agent_data = agent_registry.get(requested_agent)
+                if not agent_data:
+                    return Response(
+                        json.dumps({"error": f"Agent '{requested_agent}' not found"}),
+                        status_code=404,
+                        media_type="application/json",
+                    )
+                sandbox_tools = agent_data["sandbox_tools"]
+                agent_instructions = agent_data["content"]
+            elif not main_agent:
+                return Response(
+                    json.dumps({"error": "No main.agent.md found."}),
+                    status_code=404,
+                    media_type="application/json",
+                )
+
             session_id = req.headers.get("x-ms-session-id")
-            result = await run_copilot_agent(prompt, session_id=session_id, sandbox_tools=main_sandbox_tools)
+            result = await run_copilot_agent(
+                prompt,
+                session_id=session_id,
+                sandbox_tools=sandbox_tools,
+                agent_instructions=agent_instructions,
+            )
 
             response = Response(
                 json.dumps(
@@ -687,12 +711,13 @@ def create_function_app(app_root: Path | None = None) -> func.FunctionApp:
         """
         Streaming chat endpoint - send a prompt, receive SSE events.
 
-        POST /agent/chat/stream
+        POST /agent/chatstream
         Headers:
             x-ms-session-id (optional): Session ID for resuming a previous session
         Body:
         {
-            "prompt": "What is 2+2?"
+            "prompt": "What is 2+2?",
+            "agent": "weatherf"  // optional — use a named agent instead of main
         }
 
         Response: text/event-stream with events:
@@ -706,19 +731,36 @@ def create_function_app(app_root: Path | None = None) -> func.FunctionApp:
             body = await req.json()
             prompt = body.get("prompt")
 
-            if not main_agent:
-                async def no_agent_gen():
-                    yield f"data: {json.dumps({'type': 'error', 'content': 'No main.agent.md found. Create a main.agent.md file in the app root to enable this endpoint.'})}\n\n"
-                return StreamingResponse(no_agent_gen(), media_type="text/event-stream", status_code=404)
-
             if not prompt:
                 async def error_gen():
                     yield f"data: {json.dumps({'type': 'error', 'content': 'Missing prompt'})}\n\n"
                 return StreamingResponse(error_gen(), media_type="text/event-stream")
 
+            # Resolve agent: named agent from body, or main agent
+            requested_agent = body.get("agent")
+            sandbox_tools = main_sandbox_tools
+            agent_instructions = None
+            if requested_agent:
+                agent_data = agent_registry.get(requested_agent)
+                if not agent_data:
+                    async def not_found_gen():
+                        yield f"data: {json.dumps({'type': 'error', 'content': f'Agent not found: {requested_agent}'})}\n\n"
+                    return StreamingResponse(not_found_gen(), media_type="text/event-stream", status_code=404)
+                sandbox_tools = agent_data["sandbox_tools"]
+                agent_instructions = agent_data["content"]
+            elif not main_agent:
+                async def no_agent_gen():
+                    yield f"data: {json.dumps({'type': 'error', 'content': 'No main.agent.md found. Create a main.agent.md file in the app root to enable this endpoint.'})}\n\n"
+                return StreamingResponse(no_agent_gen(), media_type="text/event-stream", status_code=404)
+
             session_id = req.headers.get("x-ms-session-id")
             return StreamingResponse(
-                run_copilot_agent_stream(prompt, session_id=session_id, sandbox_tools=main_sandbox_tools),
+                run_copilot_agent_stream(
+                    prompt,
+                    session_id=session_id,
+                    sandbox_tools=sandbox_tools,
+                    agent_instructions=agent_instructions,
+                ),
                 media_type="text/event-stream",
             )
 
@@ -728,89 +770,6 @@ def create_function_app(app_root: Path | None = None) -> func.FunctionApp:
             async def error_gen():
                 yield f"data: {json.dumps({'type': 'error', 'content': error_msg})}\n\n"
             return StreamingResponse(error_gen(), media_type="text/event-stream")
-
-    # ---- Named agent chat endpoints ----
-
-    @app.route(route="agent/{agent_name}/chat", methods=["POST"])
-    async def named_agent_chat(req: Request) -> Response:
-        """Chat endpoint for a named agent. POST /agent/{name}/chat"""
-        agent_name = (req.path_params or {}).get("agent_name", "")
-        agent_data = agent_registry.get(agent_name)
-        if not agent_data:
-            return Response(
-                json.dumps({"error": f"Agent '{agent_name}' not found"}),
-                status_code=404,
-                media_type="application/json",
-            )
-        try:
-            body = await req.json()
-            prompt = body.get("prompt")
-            if not prompt:
-                return Response(
-                    json.dumps({"error": "Missing 'prompt'"}),
-                    status_code=400,
-                    media_type="application/json",
-                )
-            session_id = req.headers.get("x-ms-session-id")
-            result = await run_copilot_agent(
-                prompt,
-                session_id=session_id,
-                sandbox_tools=agent_data["sandbox_tools"],
-                agent_instructions=agent_data["content"],
-            )
-            return Response(
-                json.dumps({
-                    "session_id": result.session_id,
-                    "response": result.content,
-                    "response_intermediate": result.content_intermediate,
-                    "tool_calls": result.tool_calls,
-                }),
-                media_type="application/json",
-                headers={"x-ms-session-id": result.session_id},
-            )
-        except Exception as e:
-            error_msg = str(e) if str(e) else f"{type(e).__name__}: {repr(e)}"
-            logging.error(f"Named agent chat error ({agent_name}): {error_msg}")
-            return Response(
-                json.dumps({"error": error_msg}),
-                status_code=500,
-                media_type="application/json",
-            )
-
-    @app.route(route="agent/{agent_name}/chatstream", methods=["POST"])
-    async def named_agent_chatstream(req: Request) -> StreamingResponse:
-        """Streaming chat endpoint for a named agent. POST /agent/{name}/chatstream"""
-        agent_name = (req.path_params or {}).get("agent_name", "")
-        agent_data = agent_registry.get(agent_name)
-        if not agent_data:
-            async def not_found_gen():
-                yield f"data: {json.dumps({'type': 'error', 'content': f'Agent not found: {agent_name}'})}\n\n"
-            return StreamingResponse(not_found_gen(), media_type="text/event-stream", status_code=404)
-
-        try:
-            body = await req.json()
-            prompt = body.get("prompt")
-            if not prompt:
-                async def missing_prompt_gen():
-                    yield f"data: {json.dumps({'type': 'error', 'content': 'Missing prompt'})}\n\n"
-                return StreamingResponse(missing_prompt_gen(), media_type="text/event-stream")
-
-            session_id = req.headers.get("x-ms-session-id")
-            return StreamingResponse(
-                run_copilot_agent_stream(
-                    prompt,
-                    session_id=session_id,
-                    sandbox_tools=agent_data["sandbox_tools"],
-                    agent_instructions=agent_data["content"],
-                ),
-                media_type="text/event-stream",
-            )
-        except Exception as e:
-            error_msg = str(e) if str(e) else f"{type(e).__name__}: {repr(e)}"
-            logging.error(f"Named agent chatstream error ({agent_name}): {error_msg}")
-            async def stream_error_gen():
-                yield f"data: {json.dumps({'type': 'error', 'content': error_msg})}\n\n"
-            return StreamingResponse(stream_error_gen(), media_type="text/event-stream")
 
     # ---- MCP tool (only when main agent exists) ----
 
